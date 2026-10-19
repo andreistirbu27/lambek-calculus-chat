@@ -1,0 +1,35 @@
+SENTENCE : s.
+
+Brian    : np                   = 'Brian'.
+Conor    : np                   = 'Conor'.
+Dara     : np                   = 'Dara'.
+Fiona    : np                   = 'Fiona'.
+Ronan    : np                   = 'Ronan'.
+Seamus   : np                   = 'Seamus'.
+Tara     : np                   = 'Tara'.
+
+Animal   : n                    = lambda x : x in animals.
+Badger   : n                    = lambda x : kind[x] == 'badger'.
+Cat      : n                    = lambda x : kind[x] == 'cat'.
+Dog      : n                    = lambda x : kind[x] == 'dog'.
+Mouse    : n                    = lambda x : kind[x] == 'mouse'.
+
+Sleeps   : np \ s               = lambda x : x in sleep.
+Chases   : np \ (s / np)        = lambda x : lambda y : (x,y) in chase.
+Fears    : np \ (s / np)        = lambda x : lambda y : (x,y) in fear.
+
+Is       : np \ (s / adj)       = lambda x : lambda p : p(x).
+Hungry   : adj                  = lambda x : x in hungry.
+Hungry   : n / n                = lambda p : lambda x : p(x) and x in hungry.
+Grey     : adj                  = lambda x : x in grey.
+Grey     : n / n                = lambda p : lambda x : p(x) and x in grey.
+
+Someone  : s / (np \ s)         = lambda p : any (p(x) for x in animals).
+Someone  : (s / np) \ s         = lambda p : any (p(x) for x in animals).
+Every    : (s / (np \ s)) / n   = lambda q : lambda p : all (p(x) for x in animals if q(x)).
+Every    : ((s / np) \ s) / n   = lambda q : lambda p : all (p(x) for x in animals if q(x)).
+A        : (s / (np \ s)) / n   = lambda q : lambda p : any (p(x) and q(x) for x in animals).
+A        : ((s / np) \ s) / n   = lambda q : lambda p : any (p(x) and q(x) for x in animals).
+
+And      : s \ (s / s)          = lambda x : lambda y : x and y.
+And      : adj \ (adj / adj)    = lambda p : lambda q : lambda x : p(x) and q(x).
