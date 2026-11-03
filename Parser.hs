@@ -18,6 +18,7 @@ import Control.Exception
 
 import LTypes
 import PySupport
+import Ambiguity
 
 -- We begin by defining the type of parsers for a type, which you may
 -- observe is a variation of the state monad.  The idea is to keep track of both
@@ -181,8 +182,31 @@ lex_item = do
   newline
   return (w,t,PCode def)
 
+-- Parse a declaration of algebraic laws, which may follow the SENTENCE line:
+--
+--     ASSOC : And, Or.
+--
+-- These say the word means something associative, which lets us tell real ambiguity from just a choice of bracketing.
+-- "ASSOC" does not parse as a lexicon item: "word" wants lowercase after the first letter, so there is no ambiguity about which of the two we are reading.
+law :: Parser [String]
+law = do
+  spaces
+  string "ASSOC"
+  spaces
+  char ':'
+  spaces
+  ws <- separatedBy word (spaces >> char ',' >> spaces)
+  spaces
+  char '.'
+  newline
+  return ws
+
+-- collect the declarations into the laws of a lexicon
+collectLaws :: [[String]] -> Laws
+collectLaws = Laws . concat
+
 -- parse an entire lexicon
-lexicon :: Parser (Lexicon PythonCode)
+lexicon :: Parser (Lexicon PythonCode, Laws)
 lexicon = do
   string "SENTENCE"
   spaces
@@ -192,10 +216,11 @@ lexicon = do
   spaces
   char '.'
   newline
+  ds <- list law
   items <- list lex_item
   list newline
   end
-  return (Lexicon items s)
+  return (Lexicon items s, collectLaws ds)
 
 -- call a parser on the contents of a file
 parseFile :: Parser a -> FilePath -> IO (Either IOError (Either ParseError a))

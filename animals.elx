@@ -1,4 +1,5 @@
 SENTENCE : s.
+ASSOC : And.
 
 Brian    : np                   = 'Brian'.
 Conor    : np                   = 'Conor'.
