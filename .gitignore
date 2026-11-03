@@ -1,0 +1,6 @@
+*.md
+*.hi
+*.o
+ChatLLaMbda
+__pycache__/
+.DS_Store

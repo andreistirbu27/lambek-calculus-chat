@@ -1,0 +1,46 @@
+# Tells haskell-language-server how to load these files.  There is no cabal
+# project -- every module sits in this directory and is built by plain ghc --
+# so each component just lists the files it needs, with "-i." for the imports.
+#
+# ChatLLaMbda.hs and Tests.hs are both Main modules, so they get a component
+# each: in one component GHC would complain that Main is defined twice.
+cradle:
+  multi:
+    - path: "./ChatLLaMbda.hs"
+      config:
+        cradle:
+          direct:
+            arguments:
+              - "-i."
+              - LTypes.hs
+              - LExp.hs
+              - Deriv.hs
+              - Lambek.hs
+              - Parser.hs
+              - PySupport.hs
+              - ChatLLaMbda.hs
+    - path: "./Tests.hs"
+      config:
+        cradle:
+          direct:
+            arguments:
+              - "-i."
+              - LTypes.hs
+              - LExp.hs
+              - Deriv.hs
+              - Lambek.hs
+              - Parser.hs
+              - PySupport.hs
+              - Tests.hs
+    - path: "./"
+      config:
+        cradle:
+          direct:
+            arguments:
+              - "-i."
+              - LTypes.hs
+              - LExp.hs
+              - Deriv.hs
+              - Lambek.hs
+              - Parser.hs
+              - PySupport.hs
