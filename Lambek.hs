@@ -25,11 +25,28 @@
 
 module Lambek where
 
-import Data.List (nub)
+import Data.Char (toUpper, toLower)
+import Data.List (nub, nubBy)
 
 import LTypes
 import LExp
 import Deriv
+import Ambiguity
+
+-- ----------------------------------------------------------
+-- words in, as the lexicon spells them
+-- ----------------------------------------------------------
+
+-- Lexicon words are one capital then lowercase, so standardize the user's
+-- capitalization before looking anything up.  Both the chat loop and the
+-- tests go through here, so they cannot drift apart.
+stdize :: String -> String
+stdize []     = []
+stdize (c:cs) = toUpper c : map toLower cs
+
+-- split a line of input into standardized words
+sentence :: String -> [String]
+sentence = map stdize . words
 
 -- -------------------------------------------------------------------
 -- W1: deciding entailment
@@ -57,13 +74,13 @@ dec_lfoc gammaL (Atm q) gammaR p =
 -- A list of words is a grammatical sentence when some choice of lexicon entry for each word yields a context entailing the sentence type.  
 -- A word with no entry at all makes the product below empty, so the sentence is rejected.
 isGrammatical :: Lexicon sem -> [String] -> Bool
-isGrammatical lex ws =
+isGrammatical elx ws =
   not (null ws) &&
-  or [ dec_rinv gamma (stp lex) | gamma <- sequence (typesOf lex ws) ]
+  or [ dec_rinv gamma (stp elx) | gamma <- sequence (typesOf elx ws) ]
 
 -- the types each word can have, in sentence order
 typesOf :: Lexicon sem -> [String] -> [[LTp]]
-typesOf lex ws = [ [ t | (w',t,_) <- items lex, w' == w ] | w <- ws ]
+typesOf elx ws = [ [ t | (w',t,_) <- items elx, w' == w ] | w <- ws ]
 
 -- --------------------------------------------------------------
 -- W3: searching for derivations
@@ -133,22 +150,38 @@ pLExp = toLExp . pDeriv
 
 -- every parse of a sentence, over every choice of entries
 parses :: Lexicon sem -> [String] -> [Parse sem]
-parses lex ws =
+parses elx ws =
   [ Parse d [ (x,s) | (x,_,s) <- choice ]
-  | choice <- sequence (entriesOf lex ws)
-  , d <- der_rinv [ (x,t) | (x,t,_) <- choice ] (stp lex)
+  | choice <- sequence (entriesOf elx ws)
+  , d <- der_rinv [ (x,t) | (x,t,_) <- choice ] (stp elx)
   ]
 
 -- the entries each word can use, labelled by its position in the sentence
 entriesOf :: Lexicon sem -> [String] -> [[(Var,LTp,sem)]]
-entriesOf lex ws =
-  [ [ (w ++ "_" ++ show i, t, s) | (w',t,s) <- items lex, w' == w ]
+entriesOf elx ws =
+  [ [ (w ++ "_" ++ show i, t, s) | (w',t,s) <- items elx, w' == w ]
   | (i,w) <- zip [1 :: Int ..] ws ]
 
--- the distinct readings of a sentence, as lambda expressions.  Equality on LExp is alpha-equivalence, so nub collapses derivations 
--- that differ only in their choice of bound variable names.
-readings :: Lexicon sem -> [String] -> [LExp]
-readings lex ws = nub (map pLExp (parses lex ws))
+{-
+  One parse per distinct reading.
+
+  Two parses count as the same reading when their canonical forms agree, which covers three things at once:
+  1. alpha-equivalence (equality on LExp already is alpha-equivalence)
+  2. the algebraic laws the lexicon declares for its words
+  3. the entries each reading chose 
+  "showSem" renders a semantic value, so that two readings using *different* entries for the same word are never merged;
+
+-}
+senses :: Laws -> (sem -> String) -> Lexicon sem -> [String] -> [Parse sem]
+senses laws showSem elx ws = nubBy sameSense (parses elx ws)
+  where
+    sameSense p q = key p == key q
+    key p = canonical laws [ (v, showSem s) | (v,s) <- pEntries p ] (pLExp p)
+
+-- the distinct readings of a sentence, as lambda expressions, ignoring any
+-- laws the lexicon declares
+readings :: (sem -> String) -> Lexicon sem -> [String] -> [LExp]
+readings showSem elx ws = map pLExp (senses noLaws showSem elx ws)
 
 -- ----------------------------------------------------
 -- W2: explaining a rejection
@@ -156,9 +189,9 @@ readings lex ws = nub (map pLExp (parses lex ws))
 
 -- words the lexicon has never heard of
 unknownWords :: Lexicon sem -> [String] -> [String]
-unknownWords lex ws = nub [ w | w <- ws, null [ () | (w',_,_) <- items lex, w' == w ] ]
+unknownWords elx ws = nub [ w | w <- ws, null [ () | (w',_,_) <- items elx, w' == w ] ]
 
 -- the longest prefix of the input that is a grammatical sentence on its own, usually pointing out where things went wrong
 longestGoodPrefix :: Lexicon sem -> [String] -> [String]
-longestGoodPrefix lex ws =
-  last ([] : [ p | n <- [1 .. length ws], let p = take n ws, isGrammatical lex p ])
+longestGoodPrefix elx ws =
+  last ([] : [ p | n <- [1 .. length ws], let p = take n ws, isGrammatical elx p ])

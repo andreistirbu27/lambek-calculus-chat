@@ -30,16 +30,9 @@ data Rule = RuX | RuR Var | RuR' Var | RuF Var | RuL | RuL'
   deriving (Show,Eq)
 
 -- a derivation node: its conclusion, the rule applied, and its premises.
--- Storing the conclusion at every node is ~redundant, but it makes printing a single recursive function instead of threading contexts around.
+-- Storing the conclusion at every node is redundant, but it makes printing a single recursive function instead of threading contexts around.
 data Deriv = Node Sequent Rule [Deriv]
   deriving (Show,Eq)
-
-conclusion :: Deriv -> Sequent
-conclusion (Node s _ _) = s
-
--- how many derivation steps (useful for preferring simpler readings)
-size :: Deriv -> Int
-size (Node _ _ ds) = 1 + sum (map size ds)
 
 -- --------------------------------------------------------
 -- reading a derivation back as a lambda expression
