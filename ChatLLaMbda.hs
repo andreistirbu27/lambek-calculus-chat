@@ -1,63 +1,62 @@
-import Data.Char
-import Data.List (intercalate)
+import Data.List (intercalate, nub)
 import System.IO
 import Control.Exception
 
 import LTypes
 import LExp
 import Deriv
+import Eval
+import Ambiguity
 import qualified Lambek
 
 import Parser
 import PySupport
-
--- Make it easier to look up words in the lexicon:
--- "standardize" the capitalization of a word: make the first letter uppercase and the following letters lowercase.
-stdize :: String -> String
-stdize []       = []
-stdize (c:cs)   = toUpper c : map toLower cs
 
 -- how many readings we print before summarising
 maxShown :: Int
 maxShown = 6
 
 -- read-eval-print-loop.  The last argument remembers the derivations of the previous sentence so that ":tree" can print them.
-repl :: Lexicon PythonCode -> PythonHandle -> [Deriv] -> IO ()
-repl elx phandle lastDerivs = do
+repl :: Lexicon PythonCode -> Laws -> PythonHandle -> [Deriv] -> IO ()
+repl elx laws phandle lastDerivs = do
   putStr "> "
   line <- getLine
   case words line of
-    []                  -> repl elx phandle lastDerivs
+    []                  -> repl elx laws phandle lastDerivs
     [":quit"]           -> putStrLn "Bye."
-    [":help"]           -> help >> repl elx phandle lastDerivs
-    [":tree"]           -> trees lastDerivs >> repl elx phandle lastDerivs
-    [":lexicon"]        -> showLexicon elx >> repl elx phandle lastDerivs
+    [":help"]           -> help >> repl elx laws phandle lastDerivs
+    [":tree"]           -> trees lastDerivs >> repl elx laws phandle lastDerivs
+    [":lexicon"]        -> showLexicon elx >> repl elx laws phandle lastDerivs
     ws'                 -> do
-      derivs <- answer elx ws' (map stdize ws')
-      repl elx phandle derivs
+      derivs <- answer elx laws phandle ws' (map Lambek.stdize ws')
+      repl elx laws phandle derivs
 
 -- Report on one sentence, returning its derivations for a later ":tree". We keep the words as typed, as well as the standardized 
 -- ones, so that messages quote the user.
-answer :: Lexicon PythonCode -> [String] -> [String] -> IO [Deriv]
-answer elx orig ws = do
-  let ps     = Lambek.parses elx ws
-      derivs = map Lambek.pDeriv ps
-      terms  = Lambek.readings elx ws
-  if null terms
+
+-- When several readings agree on an answer we just give the answer; only a disagreement is worth bothering the user with.  Note that agreeing
+-- here means agreeing *in this world*, which is weaker than meaning the same thing.
+
+answer :: Lexicon PythonCode -> Laws -> PythonHandle -> [String] -> [String] -> IO [Deriv]
+answer elx laws phandle orig ws = do
+  let ps = Lambek.senses laws text elx ws
+  if null ps
     then do
       putStrLn "That is not a well-formed sentence."
       explain elx orig ws
       return []
     else do
-      case terms of
-        [_] -> putStrLn "I can derive your sentence as follows:"
-        _   -> putStrLn ("That sentence is ambiguous (" ++ show (length terms)
-                         ++ " readings):")
-      mapM_ (putStrLn . ("   " ++) . prettyLExp) (take maxShown terms)
-      if length terms > maxShown
-        then putStrLn ("   ... and " ++ show (length terms - maxShown) ++ " more")
-        else return ()
-      return derivs
+      vals <- mapM (\p -> evalLExp phandle (Lambek.pEntries p) (Lambek.pLExp p)) ps
+      case nub vals of
+        [v] -> putStrLn v
+        _   -> do
+          putStrLn "That sentence is ambiguous"
+          sequence_ [ putStrLn ("Sense [" ++ prettyLExp (Lambek.pLExp p) ++ "]: " ++ v)
+                    | (p,v) <- take maxShown (zip ps vals) ]
+          if length ps > maxShown
+            then putStrLn ("... and " ++ show (length ps - maxShown) ++ " more")
+            else return ()
+      return (map Lambek.pDeriv ps)
 
 -- say something useful about why a sentence was rejected
 explain :: Lexicon PythonCode -> [String] -> [String] -> IO ()
@@ -98,15 +97,16 @@ main :: IO ()
 main = do
   -- send console output immediately to the user
   hSetBuffering stdout NoBuffering
-  -- input a lexicon file
-  elx <- getLex
+  -- input a lexicon file, which also declares any algebraic laws
+  (elx,laws) <- getLex
   -- input a database of facts
   db <- getDB
-  -- launch a Python interpreter
-  phandle <- launchPython db
+  -- launch a Python interpreter, then load our helper and the world into it
+  phandle <- launchPython (PCode "")
+  startEval phandle db
   -- start the read-eval-print loop
   putStrLn "Starting chat...  (:help for commands)"
-  repl elx phandle []
+  repl elx laws phandle []
   where
     getDB :: IO PythonCode
     getDB = do
@@ -117,7 +117,7 @@ main = do
         Left err -> putStrLn ("Error loading file " ++ show err) >> getDB
         Right db -> return (PCode db)
 
-    getLex :: IO (Lexicon PythonCode)
+    getLex :: IO (Lexicon PythonCode, Laws)
     getLex = do
       putStr "Lexicon file: "
       lname <- getLine
@@ -125,4 +125,4 @@ main = do
       case res of
         Left err -> putStrLn ("Error loading file " ++ show err) >> getLex
         Right (Left err) -> putStrLn ("parse error at " ++ lname ++ ":" ++ show err) >> getLex
-        Right (Right lex) -> return lex
+        Right (Right loaded) -> return loaded
