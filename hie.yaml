@@ -15,7 +15,9 @@ cradle:
               - LTypes.hs
               - LExp.hs
               - Deriv.hs
+              - Ambiguity.hs
               - Lambek.hs
+              - Eval.hs
               - Parser.hs
               - PySupport.hs
               - ChatLLaMbda.hs
@@ -28,7 +30,9 @@ cradle:
               - LTypes.hs
               - LExp.hs
               - Deriv.hs
+              - Ambiguity.hs
               - Lambek.hs
+              - Eval.hs
               - Parser.hs
               - PySupport.hs
               - Tests.hs
@@ -41,6 +45,8 @@ cradle:
               - LTypes.hs
               - LExp.hs
               - Deriv.hs
+              - Ambiguity.hs
               - Lambek.hs
+              - Eval.hs
               - Parser.hs
               - PySupport.hs

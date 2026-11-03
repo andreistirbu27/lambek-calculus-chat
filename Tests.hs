@@ -1,9 +1,10 @@
-import Data.List (sort)
+import Data.List (nub, sort)
 import System.Exit
 
 import LTypes
 import LExp
-import Deriv
+import Eval
+import Ambiguity
 import Parser
 import PySupport
 import qualified Lambek
@@ -35,6 +36,20 @@ derivedTerms =
                                   , "A_4 Dog_5 (\\a. Every_1 Cat_2 (\\b. Fears_3 b a))" ])
   ]
 
+{-
+  How many readings a sentence has before and after quotienting by the laws that animals.elx declares (ASSOC : And).
+
+  The first sentence is an example given in the project's description: two bracketings of "and", one meaning.
+  The second is ambiguous: two quantifier scopings that disagree about the world
+-}
+senseCounts :: [(String,Int,Int)]
+senseCounts =
+  [ ("Seamus sleeps and Seamus is grey and Seamus fears Dara", 2, 1)
+  , ("every cat fears a dog"                                 , 2, 2)
+  , ("Seamus is hungry and grey"                             , 1, 1)
+  ]
+
+
 -- ----------------------------------------
 -- the harness
 -- ----------------------------------------
@@ -45,40 +60,61 @@ main = do
   case res of
     Left err                -> die ("could not read animals.elx: " ++ show err)
     Right (Left err)        -> die ("could not parse animals.elx: " ++ show err)
-    Right (Right lex)       -> do
-      rs <- sequence (checks lex)
+    Right (Right (elx,laws)) -> do
+      world <- readFile "aniworld.py"
+      ph <- launchPython (PCode "")
+      startEval ph (PCode world)
+      rs <- sequence (checks laws elx ++ evalChecks laws elx ph)
       let failed = length (filter not rs)
       putStrLn ""
       putStrLn (show (length rs - failed) ++ "/" ++ show (length rs) ++ " checks passed")
       if failed == 0 then exitSuccess else exitFailure
 
-checks :: Lexicon PythonCode -> [IO Bool]
-checks lex =
-  [ check ("grammatical: " ++ s) (Lambek.isGrammatical lex (sentence s) == want)
+checks :: Laws -> Lexicon PythonCode -> [IO Bool]
+checks laws elx =
+  [ check ("grammatical: " ++ s) (Lambek.isGrammatical elx (Lambek.sentence s) == want)
   | (s,want) <- grammatical ]
   ++
-  [ check ("terms: " ++ s) (sort (map prettyLExp (Lambek.readings lex (sentence s))) == sort want)
+  [ check ("terms: " ++ s) (sort (map prettyLExp (Lambek.readings text elx (Lambek.sentence s))) == sort want)
   | (s,want) <- derivedTerms ]
   ++
   [ check ("decide agrees with derive: " ++ s)
-          (Lambek.isGrammatical lex (sentence s) == not (null (Lambek.readings lex (sentence s))))
+          (Lambek.isGrammatical elx (Lambek.sentence s) == not (null (Lambek.readings text elx (Lambek.sentence s))))
   | (s,_) <- grammatical ]
   ++
+  [ check ("readings modulo alpha: " ++ s)
+          (length (Lambek.senses noLaws text elx (Lambek.sentence s)) == nAlpha)
+  | (s,nAlpha,_) <- senseCounts ]
+  ++
+  [ check ("readings modulo declared laws: " ++ s)
+          (length (Lambek.senses laws text elx (Lambek.sentence s)) == nLaws)
+  | (s,_,nLaws) <- senseCounts ]
+  ++
   [ check ("derivations read back as their terms: " ++ s)
-          (all wellFormed (Lambek.parses lex (sentence s)))
+          (all wellFormed (Lambek.parses elx (Lambek.sentence s)))
   | (s,_) <- derivedTerms ]
 
 -- every free variable of the term should be one of the lexicon positions that the parse chose
-wellFormed :: Lambek.Parse PythonCode -> Bool
-wellFormed p = all (`elem` map fst (Lambek.pEntries p)) (freeNonBound (Lambek.pLExp p))
-  where freeNonBound = free
+evaluated :: [(String,[String])]
+evaluated =
+  [ ("Seamus sleeps and Seamus is grey", ["True"])
+  , ("Conor sleeps"                    , ["False"])
+  , ("every cat sleeps"                , ["False"])
+  , ("every grey cat sleeps"           , ["True"])
+  , ("every cat fears a dog"           , ["False","True"])   -- ambiguous
+  ]
 
-sentence :: String -> [String]
-sentence = map std . words
-  where std []     = []
-        std (c:cs) = toUpperC c : map toLowerC cs
-        toUpperC c = if c >= 'a' && c <= 'z' then toEnum (fromEnum c - 32) else c
-        toLowerC c = if c >= 'A' && c <= 'Z' then toEnum (fromEnum c + 32) else c
+-- Evaluating every reading of a sentence should give the correct answers.  These run in order against one interpreter, which also
+-- checks that the one-line protocol stays in step across many queries.
+evalChecks :: Laws -> Lexicon PythonCode -> PythonHandle -> [IO Bool]
+evalChecks laws elx ph =
+  [ do vals <- mapM (\p -> evalLExp ph (Lambek.pEntries p) (Lambek.pLExp p))
+                    (Lambek.senses laws text elx (Lambek.sentence s))
+       check ("evaluates: " ++ s) (nub (sort vals) == want)
+  | (s,want) <- evaluated ]
+
+wellFormed :: Lambek.Parse PythonCode -> Bool
+wellFormed p = all (`elem` map fst (Lambek.pEntries p)) (free (Lambek.pLExp p))
 
 check :: String -> Bool -> IO Bool
 check name ok = do
