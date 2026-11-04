@@ -205,8 +205,26 @@ law = do
 collectLaws :: [[String]] -> Laws
 collectLaws = Laws . concat
 
+-- Parse the QUESTION line, which may follow SENTENCE:
+--
+--     QUESTION : q.
+--
+-- A lexicon with one of these has two goal types, so the interface tries the input as a declarative first and as a question second.
+question :: Parser LTp
+question = do
+  spaces
+  string "QUESTION"
+  spaces
+  char ':'
+  spaces
+  t <- ltp
+  spaces
+  char '.'
+  newline
+  return t
+
 -- parse an entire lexicon
-lexicon :: Parser (Lexicon PythonCode, Laws)
+lexicon :: Parser (Lexicon PythonCode, Laws, [LTp])
 lexicon = do
   string "SENTENCE"
   spaces
@@ -216,11 +234,12 @@ lexicon = do
   spaces
   char '.'
   newline
+  qs <- list question
   ds <- list law
   items <- list lex_item
   list newline
   end
-  return (Lexicon items s, collectLaws ds)
+  return (Lexicon items s, collectLaws ds, s : qs)
 
 -- call a parser on the contents of a file
 parseFile :: Parser a -> FilePath -> IO (Either IOError (Either ParseError a))

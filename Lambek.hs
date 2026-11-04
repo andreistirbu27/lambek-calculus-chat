@@ -74,9 +74,13 @@ dec_lfoc gammaL (Atm q) gammaR p =
 -- A list of words is a grammatical sentence when some choice of lexicon entry for each word yields a context entailing the sentence type.  
 -- A word with no entry at all makes the product below empty, so the sentence is rejected.
 isGrammatical :: Lexicon sem -> [String] -> Bool
-isGrammatical elx ws =
+isGrammatical elx ws = isGrammaticalAt elx [stp elx] ws
+
+-- the same, but accepting any of several goal types.  A lexicon that declares a QUESTION type has two: declaratives derive s, questions derive q.
+isGrammaticalAt :: Lexicon sem -> [LTp] -> [String] -> Bool
+isGrammaticalAt elx goals ws =
   not (null ws) &&
-  or [ dec_rinv gamma (stp elx) | gamma <- sequence (typesOf elx ws) ]
+  or [ dec_rinv gamma g | g <- goals, gamma <- sequence (typesOf elx ws) ]
 
 -- the types each word can have, in sentence order
 typesOf :: Lexicon sem -> [String] -> [[LTp]]
@@ -150,10 +154,14 @@ pLExp = toLExp . pDeriv
 
 -- every parse of a sentence, over every choice of entries
 parses :: Lexicon sem -> [String] -> [Parse sem]
-parses elx ws =
+parses elx = parsesAt elx (stp elx)
+
+-- every parse of a sentence at a given goal type
+parsesAt :: Lexicon sem -> LTp -> [String] -> [Parse sem]
+parsesAt elx goal ws =
   [ Parse d [ (x,s) | (x,_,s) <- choice ]
   | choice <- sequence (entriesOf elx ws)
-  , d <- der_rinv [ (x,t) | (x,t,_) <- choice ] (stp elx)
+  , d <- der_rinv [ (x,t) | (x,t,_) <- choice ] goal
   ]
 
 -- the entries each word can use, labelled by its position in the sentence
@@ -173,10 +181,21 @@ entriesOf elx ws =
 
 -}
 senses :: Laws -> (sem -> String) -> Lexicon sem -> [String] -> [Parse sem]
-senses laws showSem elx ws = nubBy sameSense (parses elx ws)
+senses laws showSem elx = sensesAt laws showSem elx (stp elx)
+
+sensesAt :: Laws -> (sem -> String) -> Lexicon sem -> LTp -> [String] -> [Parse sem]
+sensesAt laws showSem elx goal ws = nubBy sameSense (parsesAt elx goal ws)
   where
     sameSense p q = key p == key q
     key p = canonical laws [ (v, showSem s) | (v,s) <- pEntries p ] (pLExp p)
+
+-- The readings at the first goal type that yields any, so a declarative is read as a declarative and only then as a question.  
+-- The chat loop and the tests both come through here.
+sensesAny :: Laws -> (sem -> String) -> Lexicon sem -> [LTp] -> [String] -> [Parse sem]
+sensesAny laws showSem elx goals ws =
+  case dropWhile null [ sensesAt laws showSem elx g ws | g <- goals ] of
+    (ps:_) -> ps
+    []     -> []
 
 -- the distinct readings of a sentence, as lambda expressions, ignoring any
 -- laws the lexicon declares
@@ -191,7 +210,7 @@ readings showSem elx ws = map pLExp (senses noLaws showSem elx ws)
 unknownWords :: Lexicon sem -> [String] -> [String]
 unknownWords elx ws = nub [ w | w <- ws, null [ () | (w',_,_) <- items elx, w' == w ] ]
 
--- the longest prefix of the input that is a grammatical sentence on its own, usually pointing out where things went wrong
-longestGoodPrefix :: Lexicon sem -> [String] -> [String]
-longestGoodPrefix elx ws =
-  last ([] : [ p | n <- [1 .. length ws], let p = take n ws, isGrammatical elx p ])
+-- the longest prefix of the input that stands on its own at one of the goal types, usually pointing out where things went wrong
+longestGoodPrefix :: Lexicon sem -> [LTp] -> [String] -> [String]
+longestGoodPrefix elx goals ws =
+  last ([] : [ p | n <- [1 .. length ws], let p = take n ws, isGrammaticalAt elx goals p ])

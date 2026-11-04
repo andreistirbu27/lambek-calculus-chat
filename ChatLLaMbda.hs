@@ -17,19 +17,19 @@ maxShown :: Int
 maxShown = 6
 
 -- read-eval-print-loop.  The last argument remembers the derivations of the previous sentence so that ":tree" can print them.
-repl :: Lexicon PythonCode -> Laws -> PythonHandle -> [Deriv] -> IO ()
-repl elx laws phandle lastDerivs = do
+repl :: Lexicon PythonCode -> Laws -> [LTp] -> PythonHandle -> [Deriv] -> IO ()
+repl elx laws goals phandle lastDerivs = do
   putStr "> "
   line <- getLine
   case words line of
-    []                  -> repl elx laws phandle lastDerivs
+    []                  -> repl elx laws goals phandle lastDerivs
     [":quit"]           -> putStrLn "Bye."
-    [":help"]           -> help >> repl elx laws phandle lastDerivs
-    [":tree"]           -> trees lastDerivs >> repl elx laws phandle lastDerivs
-    [":lexicon"]        -> showLexicon elx >> repl elx laws phandle lastDerivs
+    [":help"]           -> help >> repl elx laws goals phandle lastDerivs
+    [":tree"]           -> trees lastDerivs >> repl elx laws goals phandle lastDerivs
+    [":lexicon"]        -> showLexicon elx goals >> repl elx laws goals phandle lastDerivs
     ws'                 -> do
-      derivs <- answer elx laws phandle ws' (map Lambek.stdize ws')
-      repl elx laws phandle derivs
+      derivs <- answer elx laws goals phandle ws' (map Lambek.stdize ws')
+      repl elx laws goals phandle derivs
 
 -- Report on one sentence, returning its derivations for a later ":tree". We keep the words as typed, as well as the standardized 
 -- ones, so that messages quote the user.
@@ -37,13 +37,14 @@ repl elx laws phandle lastDerivs = do
 -- When several readings agree on an answer we just give the answer; only a disagreement is worth bothering the user with.  Note that agreeing
 -- here means agreeing *in this world*, which is weaker than meaning the same thing.
 
-answer :: Lexicon PythonCode -> Laws -> PythonHandle -> [String] -> [String] -> IO [Deriv]
-answer elx laws phandle orig ws = do
-  let ps = Lambek.senses laws text elx ws
+answer :: Lexicon PythonCode -> Laws -> [LTp] -> PythonHandle -> [String] -> [String] -> IO [Deriv]
+answer elx laws goals phandle orig ws = do
+  -- tried as a declarative first, then as a question
+  let ps = Lambek.sensesAny laws text elx goals ws
   if null ps
     then do
       putStrLn "That is not a well-formed sentence."
-      explain elx orig ws
+      explain elx goals orig ws
       return []
     else do
       vals <- mapM (\p -> evalLExp phandle (Lambek.pEntries p) (Lambek.pLExp p)) ps
@@ -59,12 +60,12 @@ answer elx laws phandle orig ws = do
       return (map Lambek.pDeriv ps)
 
 -- say something useful about why a sentence was rejected
-explain :: Lexicon PythonCode -> [String] -> [String] -> IO ()
-explain elx orig ws =
+explain :: Lexicon PythonCode -> [LTp] -> [String] -> [String] -> IO ()
+explain elx goals orig ws =
   case Lambek.unknownWords elx ws of
     (u:us) -> putStrLn ("   I do not know the word(s): " ++ intercalate ", " (u:us))
     []     ->
-      case length (Lambek.longestGoodPrefix elx ws) of
+      case length (Lambek.longestGoodPrefix elx goals ws) of
         0 -> putStrLn "   None of it parses as a sentence."
         n -> putStrLn ("   I got as far as \"" ++ unwords (take n orig)
                        ++ "\"; the rest does not fit.")
@@ -79,9 +80,9 @@ trees ds = sequence_
        putStrLn ""
   | (i,d) <- zip [1 :: Int ..] (take maxShown ds) ]
 
-showLexicon :: Lexicon PythonCode -> IO ()
-showLexicon elx = do
-  putStrLn ("Sentence type: " ++ showLTp (stp elx))
+showLexicon :: Lexicon PythonCode -> [LTp] -> IO ()
+showLexicon elx goals = do
+  putStrLn ("Goal types: " ++ intercalate ", " (map showLTp goals))
   sequence_ [ putStrLn ("   " ++ w ++ " : " ++ showLTp t) | (w,t,_) <- items elx ]
 
 help :: IO ()
@@ -98,7 +99,7 @@ main = do
   -- send console output immediately to the user
   hSetBuffering stdout NoBuffering
   -- input a lexicon file, which also declares any algebraic laws
-  (elx,laws) <- getLex
+  (elx,laws,goals) <- getLex
   -- input a database of facts
   db <- getDB
   -- launch a Python interpreter, then load our helper and the world into it
@@ -106,7 +107,7 @@ main = do
   startEval phandle db
   -- start the read-eval-print loop
   putStrLn "Starting chat...  (:help for commands)"
-  repl elx laws phandle []
+  repl elx laws goals phandle []
   where
     getDB :: IO PythonCode
     getDB = do
@@ -117,7 +118,7 @@ main = do
         Left err -> putStrLn ("Error loading file " ++ show err) >> getDB
         Right db -> return (PCode db)
 
-    getLex :: IO (Lexicon PythonCode, Laws)
+    getLex :: IO (Lexicon PythonCode, Laws, [LTp])
     getLex = do
       putStr "Lexicon file: "
       lname <- getLine
