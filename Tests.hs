@@ -60,11 +60,11 @@ main = do
   case res of
     Left err                -> die ("could not read animals.elx: " ++ show err)
     Right (Left err)        -> die ("could not parse animals.elx: " ++ show err)
-    Right (Right (elx,laws)) -> do
+    Right (Right (elx,laws,goals)) -> do
       world <- readFile "aniworld.py"
       ph <- launchPython (PCode "")
       startEval ph (PCode world)
-      rs <- sequence (checks laws elx ++ evalChecks laws elx ph)
+      rs <- sequence (checks laws elx ++ evalChecks laws goals elx ph)
       let failed = length (filter not rs)
       putStrLn ""
       putStrLn (show (length rs - failed) ++ "/" ++ show (length rs) ++ " checks passed")
@@ -102,14 +102,36 @@ evaluated =
   , ("every cat sleeps"                , ["False"])
   , ("every grey cat sleeps"           , ["True"])
   , ("every cat fears a dog"           , ["False","True"])   -- ambiguous
+  -- questions, answered at the QUESTION goal type
+  , ("who sleeps"                      , ["Seamus"])
+  , ("who is hungry"                   , ["Conor, Dara, Ronan"])
+  , ("who is grey"                     , ["Seamus, Tara"])
+  , ("who chases Fiona"                , ["Dara"])
+  , ("which cat sleeps"                , ["Seamus"])
+  , ("Conor chases who"                , ["Tara"])
+  , ("Tara fears who"                  , ["Conor, Seamus"])
+  , ("who swims"                       , ["Brian, Fiona"])
+  -- yes/no questions, and the "does" inversion
+  , ("does Conor sleep"                , ["No"])
+  , ("does Seamus sleep"               , ["Yes"])
+  , ("does Conor chase Tara"           , ["Yes"])
+  , ("does Tara chase Conor"           , ["No"])
+  , ("is Conor hungry"                 , ["Yes"])
+  , ("is Seamus hungry"                , ["No"])
+  , ("who does Conor fear"             , ["Fiona"])
+  , ("who does Tara fear"              , ["Conor, Seamus"])
+  , ("who does Dara chase"             , ["Fiona"])
+  -- the declaratives these invert must still read as declaratives
+  , ("Conor is hungry"                 , ["True"])
+  , ("Conor chases Tara"               , ["True"])
   ]
 
 -- Evaluating every reading of a sentence should give the correct answers.  These run in order against one interpreter, which also
 -- checks that the one-line protocol stays in step across many queries.
-evalChecks :: Laws -> Lexicon PythonCode -> PythonHandle -> [IO Bool]
-evalChecks laws elx ph =
+evalChecks :: Laws -> [LTp] -> Lexicon PythonCode -> PythonHandle -> [IO Bool]
+evalChecks laws goals elx ph =
   [ do vals <- mapM (\p -> evalLExp ph (Lambek.pEntries p) (Lambek.pLExp p))
-                    (Lambek.senses laws text elx (Lambek.sentence s))
+                    (Lambek.sensesAny laws text elx goals (Lambek.sentence s))
        check ("evaluates: " ++ s) (nub (sort vals) == want)
   | (s,want) <- evaluated ]
 
