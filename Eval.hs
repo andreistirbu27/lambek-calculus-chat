@@ -44,10 +44,17 @@ sendLine (hin,_,_,_) s = hPutStrLn hin s
 {-
   runPythonCode reads exactly one line of stdout, so every query has to print exactly one line and must never raise: a traceback 
   goes to the stderr handle that nobody reads, and the read would then block forever.
+
+  A wh-question answers with a collection, so those are joined into one readable line, and a yes/no question answers with a string, 
+  which is shown as is.  Everything else goes through repr, which gives True and False for declaratives.
 -}
 helperCode :: String
 helperCode =
-  "exec(\"def _ans(th):\\n try:\\n  return repr(th())\\n"
+  "exec(\"def _ans(th):\\n try:\\n  v = th()\\n"
+  ++ "  if isinstance(v,str): return v\\n"
+  ++ "  if isinstance(v,(list,tuple,set,frozenset)):\\n"
+  ++ "   return ', '.join(sorted(map(str,v))) or '(nobody)'\\n"
+  ++ "  return repr(v)\\n"
   ++ " except Exception as e:\\n  return 'ERROR: '+type(e).__name__+': '+str(e)\\n\")"
 
 loadWorld :: PythonHandle -> PythonCode -> IO ()

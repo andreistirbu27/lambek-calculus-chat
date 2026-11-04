@@ -1,4 +1,5 @@
 SENTENCE : s.
+QUESTION : q.
 ASSOC : And.
 
 Brian    : np                   = 'Brian'.
@@ -34,3 +35,19 @@ A        : ((s / np) \ s) / n   = lambda q : lambda p : any (p(x) and q(x) for x
 
 And      : s \ (s / s)          = lambda x : lambda y : x and y.
 And      : adj \ (adj / adj)    = lambda p : lambda q : lambda x : p(x) and q(x).
+
+Who      : q / (np \ s)         = lambda p : [x for x in animals if p(x)].
+Who      : (s / np) \ q          = lambda p : [x for x in animals if p(x)].
+Which    : (q / (np \ s)) / n    = lambda q : lambda p : [x for x in animals if q(x) and p(x)].
+
+Swims    : np \ s               = lambda x : x in swim.
+
+Sleep    : np \ s               = lambda x : x in sleep.
+Swim     : np \ s               = lambda x : x in swim.
+Chase    : np \ (s / np)        = lambda x : lambda y : (x,y) in chase.
+Fear     : np \ (s / np)        = lambda x : lambda y : (x,y) in fear.
+
+Does     : (q / (np \ s)) / np   = lambda x : lambda p : 'Yes' if p(x) else 'No'.
+Does     : (qo / (np \ (s / np))) / np = lambda x : lambda r : lambda y : r(x)(y).
+Is       : (q / adj) / np        = lambda x : lambda p : 'Yes' if p(x) else 'No'.
+Who      : q / qo                = lambda p : [x for x in animals if p(x)].
