@@ -16,38 +16,51 @@ Cat      : n                    = lambda x : kind[x] == 'cat'.
 Dog      : n                    = lambda x : kind[x] == 'dog'.
 Mouse    : n                    = lambda x : kind[x] == 'mouse'.
 
-Sleeps   : np \ s               = lambda x : x in sleep.
-Chases   : np \ (s / np)        = lambda x : lambda y : (x,y) in chase.
-Fears    : np \ (s / np)        = lambda x : lambda y : (x,y) in fear.
+Sleeps   : np \ s               = lambda x : x in sleep
+         ? lambda x : ('yes; ' if x in sleep else 'no; ') + 'the ones who sleep are ' + names(sleep).
+Swims    : np \ s               = lambda x : x in swim
+         ? lambda x : ('yes; ' if x in swim else 'no; ') + 'the ones who swim are ' + names(swim).
+Chases   : np \ (s / np)        = lambda x : lambda y : (x,y) in chase
+         ? lambda x : lambda y : ('yes; ' if (x,y) in chase else 'no; ') + x + ' chases ' + names(b for (a,b) in chase if a == x).
+Fears    : np \ (s / np)        = lambda x : lambda y : (x,y) in fear
+         ? lambda x : lambda y : ('yes; ' if (x,y) in fear else 'no; ') + x + ' fears ' + names(b for (a,b) in fear if a == x).
 
-Is       : np \ (s / adj)       = lambda x : lambda p : p(x).
+Is       : np \ (s / adj)       = lambda x : lambda p : p(x)
+         ? lambda x : lambda p : ('yes; ' if p(x) else 'no; ') + 'that holds of ' + names(y for y in animals if p(y)).
 Hungry   : adj                  = lambda x : x in hungry.
 Hungry   : n / n                = lambda p : lambda x : p(x) and x in hungry.
 Grey     : adj                  = lambda x : x in grey.
 Grey     : n / n                = lambda p : lambda x : p(x) and x in grey.
 
-Someone  : s / (np \ s)         = lambda p : any (p(x) for x in animals).
-Someone  : (s / np) \ s         = lambda p : any (p(x) for x in animals).
-Every    : (s / (np \ s)) / n   = lambda q : lambda p : all (p(x) for x in animals if q(x)).
-Every    : ((s / np) \ s) / n   = lambda q : lambda p : all (p(x) for x in animals if q(x)).
-A        : (s / (np \ s)) / n   = lambda q : lambda p : any (p(x) and q(x) for x in animals).
-A        : ((s / np) \ s) / n   = lambda q : lambda p : any (p(x) and q(x) for x in animals).
+Someone  : s / (np \ s)         = lambda p : any (p(x) for x in animals)
+         ? lambda p : 'yes, ' + names(x for x in animals if p(x)) if any (p(x) for x in animals) else 'no, none of them'.
+Someone  : (s / np) \ s         = lambda p : any (p(x) for x in animals)
+         ? lambda p : 'yes, ' + names(x for x in animals if p(x)) if any (p(x) for x in animals) else 'no, none of them'.
+Every    : (s / (np \ s)) / n   = lambda q : lambda p : all (p(x) for x in animals if q(x))
+         ? lambda q : lambda p : 'yes, all of ' + names(x for x in animals if q(x)) if all (p(x) for x in animals if q(x)) else 'no, not ' + names(x for x in animals if q(x) and not p(x)).
+Every    : ((s / np) \ s) / n   = lambda q : lambda p : all (p(x) for x in animals if q(x))
+         ? lambda q : lambda p : 'yes, all of ' + names(x for x in animals if q(x)) if all (p(x) for x in animals if q(x)) else 'no, not ' + names(x for x in animals if q(x) and not p(x)).
+A        : (s / (np \ s)) / n   = lambda q : lambda p : any (p(x) and q(x) for x in animals)
+         ? lambda q : lambda p : 'yes, ' + names(x for x in animals if q(x) and p(x)) if any (p(x) and q(x) for x in animals) else 'no, none of ' + names(x for x in animals if q(x)).
+A        : ((s / np) \ s) / n   = lambda q : lambda p : any (p(x) and q(x) for x in animals)
+         ? lambda q : lambda p : 'yes, ' + names(x for x in animals if q(x) and p(x)) if any (p(x) and q(x) for x in animals) else 'no, none of ' + names(x for x in animals if q(x)).
 
-And      : s \ (s / s)          = lambda x : lambda y : x and y.
+And      : s \ (s / s)          = lambda x : lambda y : x and y
+         ? lambda x : lambda y : 'both parts hold' if x and y else ('only the first part holds' if x else ('only the second part holds' if y else 'neither part holds')).
 And      : adj \ (adj / adj)    = lambda p : lambda q : lambda x : p(x) and q(x).
 
 Who      : q / (np \ s)         = lambda p : [x for x in animals if p(x)].
 Who      : (s / np) \ q          = lambda p : [x for x in animals if p(x)].
 Which    : (q / (np \ s)) / n    = lambda q : lambda p : [x for x in animals if q(x) and p(x)].
 
-Swims    : np \ s               = lambda x : x in swim.
-
 Sleep    : np \ s               = lambda x : x in sleep.
 Swim     : np \ s               = lambda x : x in swim.
 Chase    : np \ (s / np)        = lambda x : lambda y : (x,y) in chase.
 Fear     : np \ (s / np)        = lambda x : lambda y : (x,y) in fear.
 
-Does     : (q / (np \ s)) / np   = lambda x : lambda p : 'Yes' if p(x) else 'No'.
+Does     : (q / (np \ s)) / np   = lambda x : lambda p : 'Yes' if p(x) else 'No'
+         ? lambda x : lambda p : ('yes; ' if p(x) else 'no; ') + 'that holds of ' + names(y for y in animals if p(y)).
 Does     : (qo / (np \ (s / np))) / np = lambda x : lambda r : lambda y : r(x)(y).
-Is       : (q / adj) / np        = lambda x : lambda p : 'Yes' if p(x) else 'No'.
+Is       : (q / adj) / np        = lambda x : lambda p : 'Yes' if p(x) else 'No'
+         ? lambda x : lambda p : ('yes; ' if p(x) else 'no; ') + 'that holds of ' + names(y for y in animals if p(y)).
 Who      : q / qo                = lambda p : [x for x in animals if p(x)].

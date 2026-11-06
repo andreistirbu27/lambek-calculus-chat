@@ -19,6 +19,7 @@ import Control.Exception
 import LTypes
 import PySupport
 import Ambiguity
+import Eval
 
 -- We begin by defining the type of parsers for a type, which you may
 -- observe is a variation of the state monad.  The idea is to keep track of both
@@ -165,8 +166,12 @@ divR = do
   t2 <- ltp
   return (DivR t1 t2)
 
--- parse a single lexicon item
-lex_item :: Parser (String,LTp,PythonCode)
+-- Parse a single lexicon item.  An item may give a second Python expression after a '?', which explains the answer instead of computing it:
+--
+--     Every : (s / (np \ s)) / n = lambda q : lambda p : all (...)
+--                                ? lambda q : lambda p : 'no, not ' + names(...).
+--
+lex_item :: Parser (String,LTp,Sem)
 lex_item = do
   spaces
   w <- word
@@ -177,10 +182,15 @@ lex_item = do
   spaces
   char '='
   spaces
-  def <- list (sat (\c -> c/='.' && c/='\n'))
+  def <- py_text
+  why <- optional (spaces >> char '?' >> spaces >> py_text)
   char '.'
   newline
-  return (w,t,PCode def)
+  return (w,t,Sem (PCode def) (fmap PCode why))
+
+-- The Python of one value, which runs to the '.' that ends the item or to the '?' that starts the explaining value.
+py_text :: Parser String
+py_text = list (sat (\c -> c/='.' && c/='?' && c/='\n'))
 
 -- Parse a declaration of algebraic laws, which may follow the SENTENCE line:
 --
@@ -224,7 +234,7 @@ question = do
   return t
 
 -- parse an entire lexicon
-lexicon :: Parser (Lexicon PythonCode, Laws, [LTp])
+lexicon :: Parser (Lexicon Sem, Laws, [LTp])
 lexicon = do
   string "SENTENCE"
   spaces

@@ -56,38 +56,48 @@ senseCounts =
 
 main :: IO ()
 main = do
-  res <- parseFile lexicon "animals.elx"
+  (elx,laws,goals,ph)     <- domain "animals.elx" "aniworld.py"
+  (celx,claws,cgoals,cph) <- domain "courses.elx" "uniworld.py"
+  rs <- sequence (checks laws elx
+                  ++ evalChecks laws goals elx ph evaluated
+                  ++ whyChecks laws goals elx ph
+                  ++ evalChecks claws cgoals celx cph courseEvaluated)
+  let failed = length (filter not rs)
+  putStrLn ""
+  putStrLn (show (length rs - failed) ++ "/" ++ show (length rs) ++ " checks passed")
+  if failed == 0 then exitSuccess else exitFailure
+
+-- read a lexicon and start an interpreter holding its world
+domain :: FilePath -> FilePath -> IO (Lexicon Sem, Laws, [LTp], PythonHandle)
+domain elxFile worldFile = do
+  res <- parseFile lexicon elxFile
   case res of
-    Left err                -> die ("could not read animals.elx: " ++ show err)
-    Right (Left err)        -> die ("could not parse animals.elx: " ++ show err)
+    Left err         -> die ("could not read " ++ elxFile ++ ": " ++ show err)
+    Right (Left err) -> die ("could not parse " ++ elxFile ++ ": " ++ show err)
     Right (Right (elx,laws,goals)) -> do
-      world <- readFile "aniworld.py"
+      world <- readFile worldFile
       ph <- launchPython (PCode "")
       startEval ph (PCode world)
-      rs <- sequence (checks laws elx ++ evalChecks laws goals elx ph)
-      let failed = length (filter not rs)
-      putStrLn ""
-      putStrLn (show (length rs - failed) ++ "/" ++ show (length rs) ++ " checks passed")
-      if failed == 0 then exitSuccess else exitFailure
+      return (elx,laws,goals,ph)
 
-checks :: Laws -> Lexicon PythonCode -> [IO Bool]
+checks :: Laws -> Lexicon Sem -> [IO Bool]
 checks laws elx =
   [ check ("grammatical: " ++ s) (Lambek.isGrammatical elx (Lambek.sentence s) == want)
   | (s,want) <- grammatical ]
   ++
-  [ check ("terms: " ++ s) (sort (map prettyLExp (Lambek.readings text elx (Lambek.sentence s))) == sort want)
+  [ check ("terms: " ++ s) (sort (map prettyLExp (Lambek.readings showSem elx (Lambek.sentence s))) == sort want)
   | (s,want) <- derivedTerms ]
   ++
   [ check ("decide agrees with derive: " ++ s)
-          (Lambek.isGrammatical elx (Lambek.sentence s) == not (null (Lambek.readings text elx (Lambek.sentence s))))
+          (Lambek.isGrammatical elx (Lambek.sentence s) == not (null (Lambek.readings showSem elx (Lambek.sentence s))))
   | (s,_) <- grammatical ]
   ++
   [ check ("readings modulo alpha: " ++ s)
-          (length (Lambek.senses noLaws text elx (Lambek.sentence s)) == nAlpha)
+          (length (Lambek.senses noLaws showSem elx (Lambek.sentence s)) == nAlpha)
   | (s,nAlpha,_) <- senseCounts ]
   ++
   [ check ("readings modulo declared laws: " ++ s)
-          (length (Lambek.senses laws text elx (Lambek.sentence s)) == nLaws)
+          (length (Lambek.senses laws showSem elx (Lambek.sentence s)) == nLaws)
   | (s,_,nLaws) <- senseCounts ]
   ++
   [ check ("derivations read back as their terms: " ++ s)
@@ -128,14 +138,69 @@ evaluated =
 
 -- Evaluating every reading of a sentence should give the correct answers.  These run in order against one interpreter, which also
 -- checks that the one-line protocol stays in step across many queries.
-evalChecks :: Laws -> [LTp] -> Lexicon PythonCode -> PythonHandle -> [IO Bool]
-evalChecks laws goals elx ph =
-  [ do vals <- mapM (\p -> evalLExp ph (Lambek.pEntries p) (Lambek.pLExp p))
-                    (Lambek.sensesAny laws text elx goals (Lambek.sentence s))
+evalChecks :: Laws -> [LTp] -> Lexicon Sem -> PythonHandle -> [(String,[String])] -> [IO Bool]
+evalChecks laws goals elx ph table =
+  [ do vals <- mapM (\p -> evalLExp ph (mainEnv (Lambek.pEntries p)) (Lambek.pLExp p))
+                    (Lambek.sensesAny laws showSem elx goals (Lambek.sentence s))
        check ("evaluates: " ++ s) (nub (sort vals) == want)
-  | (s,want) <- evaluated ]
+  | (s,want) <- table ]
 
-wellFormed :: Lambek.Parse PythonCode -> Bool
+{-
+  The explanation of each reading, in the order the readings come out.  Nothing where the head word of the reading has no
+  explaining value: a wh-question is answered, not explained.
+
+  "every cat fears a dog" is the case worth having: the two scopings disagree, and each explains itself.
+-}
+explained :: [(String,[Maybe String])]
+explained =
+  [ ("every cat sleeps"                , [Just "no, not Conor"])
+  , ("every grey cat sleeps"           , [Just "yes, all of Seamus"])
+  , ("Conor sleeps"                    , [Just "no; the ones who sleep are Seamus"])
+  , ("Conor chases Tara"               , [Just "yes; Conor chases Tara"])
+  , ("Conor is hungry"                 , [Just "yes; that holds of Conor, Dara, Ronan"])
+  , ("Seamus sleeps and Seamus is grey", [Just "both parts hold"])
+  , ("Conor sleeps and Seamus is grey" , [Just "only the second part holds"])
+  , ("someone swims"                   , [Just "yes, Brian, Fiona"])
+  , ("every cat fears a dog"           , [Just "yes, all of Conor, Seamus", Just "no, none of Dara, Fiona"])
+  , ("is Conor hungry"                 , [Just "yes; that holds of Conor, Dara, Ronan"])
+  , ("who sleeps"                      , [Nothing])
+  ]
+
+whyChecks :: Laws -> [LTp] -> Lexicon Sem -> PythonHandle -> [IO Bool]
+whyChecks laws goals elx ph =
+  [ do got <- mapM (\p -> explainLExp ph (Lambek.pEntries p) (Lambek.pLExp p))
+                   (Lambek.sensesAny laws showSem elx goals (Lambek.sentence s))
+       check ("explains: " ++ s) (got == want)
+  | (s,want) <- explained ]
+
+{-
+  The second domain, which asks the same kinds of question of a different world.  Quantification there ranges over people and
+  courses together, so "who" and "what" restrict to one sort each, and nouns can carry a relative clause.
+-}
+courseEvaluated :: [(String,[String])]
+courseEvaluated =
+  [ ("Ana takes logic"                      , ["True"])
+  , ("Boris takes logic"                    , ["False"])
+  , ("Mira teaches logic"                   , ["True"])
+  , ("logic is hard"                        , ["True"])
+  , ("every student passes"                 , ["False"])
+  , ("every course is hard"                 , ["False"])
+  -- ambiguous here too: every teacher teaches some course, but no one course is taught by both
+  , ("every teacher teaches a course"       , ["False","True"])
+  , ("every student that passes takes logic", ["False"])
+  , ("someone teaches topology"             , ["True"])
+  , ("who passes"                           , ["Ana, Chen, Elena"])
+  , ("who takes logic"                      , ["Ana, Elena"])
+  , ("who teaches algebra"                  , ["Nadia"])
+  , ("which student passes"                 , ["Ana, Chen, Elena"])
+  , ("what does Ana take"                   , ["algebra, logic"])
+  , ("what does Elena take"                 , ["logic, topology"])
+  , ("does Chen pass"                       , ["Yes"])
+  , ("does Boris pass"                      , ["No"])
+  , ("is algebra hard"                      , ["No"])
+  ]
+
+wellFormed :: Lambek.Parse Sem -> Bool
 wellFormed p = all (`elem` map fst (Lambek.pEntries p)) (free (Lambek.pLExp p))
 
 check :: String -> Bool -> IO Bool

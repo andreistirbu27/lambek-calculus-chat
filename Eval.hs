@@ -16,6 +16,25 @@ import LExp
 import PySupport
 
 -- -------------------------------------
+-- what a lexicon entry means
+-- -------------------------------------
+
+{-
+  An entry gives a Python expression for the meaning of a word, and may give a second one that explains instead of computing.
+  Reading the same lambda term with the explaining value in place of the meaning produces a sentence about why the answer came out
+  as it did.
+-}
+data Sem = Sem { semMain :: PythonCode, semWhy :: Maybe PythonCode }
+
+-- the meaning of whichever entry each position chose
+mainEnv :: [(Var,Sem)] -> [(Var,PythonCode)]
+mainEnv env = [ (x,semMain s) | (x,s) <- env ]
+
+-- Readings are told apart by the entries they chose, and the meaning identifies the entry.
+showSem :: Sem -> String
+showSem = text . semMain
+
+-- -------------------------------------
 -- lambda expressions as Python
 -- -------------------------------------
 
@@ -47,6 +66,8 @@ sendLine (hin,_,_,_) s = hPutStrLn hin s
 
   A wh-question answers with a collection, so those are joined into one readable line, and a yes/no question answers with a string, 
   which is shown as is.  Everything else goes through repr, which gives True and False for declaratives.
+
+  We also install "names", which lexicon authors can call to list a set of individuals.
 -}
 helperCode :: String
 helperCode =
@@ -55,7 +76,8 @@ helperCode =
   ++ "  if isinstance(v,(list,tuple,set,frozenset)):\\n"
   ++ "   return ', '.join(sorted(map(str,v))) or '(nobody)'\\n"
   ++ "  return repr(v)\\n"
-  ++ " except Exception as e:\\n  return 'ERROR: '+type(e).__name__+': '+str(e)\\n\")"
+  ++ " except Exception as e:\\n  return 'ERROR: '+type(e).__name__+': '+str(e)\\n"
+  ++ "def names(xs):\\n return ', '.join(sorted(xs)) or 'nobody'\\n\")"
 
 loadWorld :: PythonHandle -> PythonCode -> IO ()
 loadWorld ph (PCode src) = sendLine ph ("exec(" ++ pyString src ++ ")")
@@ -87,3 +109,30 @@ evalLExp ph env e = do
 
 trim :: String -> String
 trim = dropWhileEnd isSpace . dropWhile isSpace
+
+-- --------------------------------------
+-- explaining an answer
+-- --------------------------------------
+
+{-
+  Only the head word is read in explaining mode.
+
+  The head is the word the whole sentence is an application of: the quantifier in "every cat sleeps", the conjunction in "A and B".
+  That is the word that knows why the answer came out as it did, and it still receives the ordinary meanings of its arguments, which
+  is what it expects.  Swapping an inner word as well would hand it a sentence where it wants a meaning.
+-}
+headVar :: LExp -> Maybe Var
+headVar (V x)   = Just x
+headVar (A e _) = headVar e
+headVar (L _ e) = headVar e
+
+-- Nothing when the head word of this reading has nothing to say
+explainLExp :: PythonHandle -> [(Var,Sem)] -> LExp -> IO (Maybe String)
+explainLExp ph env e =
+  case headVar e of
+    Nothing -> return Nothing
+    Just x  ->
+      case lookup x env >>= semWhy of
+        Nothing  -> return Nothing
+        -- the head is first in the environment, so this value hides its meaning
+        Just why -> fmap Just (evalLExp ph ((x,why) : mainEnv env) e)
