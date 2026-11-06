@@ -1,5 +1,6 @@
 import Data.List (intercalate, nub)
 import System.IO
+import System.IO.Error (isEOFError)
 import Control.Exception
 
 import LTypes
@@ -114,7 +115,11 @@ help = mapM_ putStrLn
   ]
 
 main :: IO ()
-main = do
+main = chat `catch` \e -> if isEOFError e then putStrLn "\nBye." else ioError e
+
+-- ctrl-D anywhere ends the chat like :quit
+chat :: IO ()
+chat = do
   -- send console output immediately to the user
   hSetBuffering stdout NoBuffering
   -- input a lexicon file, which also declares any algebraic laws
