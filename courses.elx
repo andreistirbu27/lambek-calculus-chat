@@ -1,0 +1,68 @@
+SENTENCE : s.
+QUESTION : q.
+ASSOC : And.
+
+Ana      : np                   = 'Ana'.
+Boris    : np                   = 'Boris'.
+Chen     : np                   = 'Chen'.
+Elena    : np                   = 'Elena'.
+Mira     : np                   = 'Mira'.
+Nadia    : np                   = 'Nadia'.
+Algebra  : np                   = 'algebra'.
+Logic    : np                   = 'logic'.
+Topology : np                   = 'topology'.
+
+Student  : n                    = lambda x : x in students.
+Teacher  : n                    = lambda x : x in teachers.
+Course   : n                    = lambda x : x in courses.
+
+Passes   : np \ s               = lambda x : x in passes
+         ? lambda x : ('yes; ' if x in passes else 'no; ') + 'the ones who pass are ' + names(passes).
+Takes    : np \ (s / np)        = lambda x : lambda y : (x,y) in takes
+         ? lambda x : lambda y : ('yes; ' if (x,y) in takes else 'no; ') + x + ' takes ' + names(b for (a,b) in takes if a == x).
+Teaches  : np \ (s / np)        = lambda x : lambda y : (x,y) in teaches
+         ? lambda x : lambda y : ('yes; ' if (x,y) in teaches else 'no; ') + x + ' teaches ' + names(b for (a,b) in teaches if a == x).
+
+Is       : np \ (s / adj)       = lambda x : lambda p : p(x)
+         ? lambda x : lambda p : ('yes; ' if p(x) else 'no; ') + 'that holds of ' + names(y for y in things if p(y)).
+Hard     : adj                  = lambda x : x in hard.
+Hard     : n / n                = lambda p : lambda x : p(x) and x in hard.
+Easy     : adj                  = lambda x : x in easy.
+Easy     : n / n                = lambda p : lambda x : p(x) and x in easy.
+
+That     : (n \ n) / (np \ s)   = lambda p : lambda q : lambda x : q(x) and p(x).
+
+Someone  : s / (np \ s)         = lambda p : any (p(x) for x in people)
+         ? lambda p : 'yes, ' + names(x for x in people if p(x)) if any (p(x) for x in people) else 'no, none of them'.
+Someone  : (s / np) \ s         = lambda p : any (p(x) for x in people)
+         ? lambda p : 'yes, ' + names(x for x in people if p(x)) if any (p(x) for x in people) else 'no, none of them'.
+Every    : (s / (np \ s)) / n   = lambda q : lambda p : all (p(x) for x in things if q(x))
+         ? lambda q : lambda p : 'yes, all of ' + names(x for x in things if q(x)) if all (p(x) for x in things if q(x)) else 'no, not ' + names(x for x in things if q(x) and not p(x)).
+Every    : ((s / np) \ s) / n   = lambda q : lambda p : all (p(x) for x in things if q(x))
+         ? lambda q : lambda p : 'yes, all of ' + names(x for x in things if q(x)) if all (p(x) for x in things if q(x)) else 'no, not ' + names(x for x in things if q(x) and not p(x)).
+A        : (s / (np \ s)) / n   = lambda q : lambda p : any (p(x) and q(x) for x in things)
+         ? lambda q : lambda p : 'yes, ' + names(x for x in things if q(x) and p(x)) if any (p(x) and q(x) for x in things) else 'no, none of ' + names(x for x in things if q(x)).
+A        : ((s / np) \ s) / n   = lambda q : lambda p : any (p(x) and q(x) for x in things)
+         ? lambda q : lambda p : 'yes, ' + names(x for x in things if q(x) and p(x)) if any (p(x) and q(x) for x in things) else 'no, none of ' + names(x for x in things if q(x)).
+
+And      : s \ (s / s)          = lambda x : lambda y : x and y
+         ? lambda x : lambda y : 'both parts hold' if x and y else ('only the first part holds' if x else ('only the second part holds' if y else 'neither part holds')).
+And      : adj \ (adj / adj)    = lambda p : lambda q : lambda x : p(x) and q(x).
+
+Who      : q / (np \ s)         = lambda p : [x for x in people if p(x)].
+Who      : (s / np) \ q         = lambda p : [x for x in people if p(x)].
+Who      : q / qo               = lambda p : [x for x in people if p(x)].
+What     : q / (np \ s)         = lambda p : [x for x in courses if p(x)].
+What     : (s / np) \ q         = lambda p : [x for x in courses if p(x)].
+What     : q / qo               = lambda p : [x for x in courses if p(x)].
+Which    : (q / (np \ s)) / n   = lambda q : lambda p : [x for x in things if q(x) and p(x)].
+
+Pass     : np \ s               = lambda x : x in passes.
+Take     : np \ (s / np)        = lambda x : lambda y : (x,y) in takes.
+Teach    : np \ (s / np)        = lambda x : lambda y : (x,y) in teaches.
+
+Does     : (q / (np \ s)) / np  = lambda x : lambda p : 'Yes' if p(x) else 'No'
+         ? lambda x : lambda p : ('yes; ' if p(x) else 'no; ') + 'that holds of ' + names(y for y in things if p(y)).
+Does     : (qo / (np \ (s / np))) / np = lambda x : lambda r : lambda y : r(x)(y).
+Is       : (q / adj) / np       = lambda x : lambda p : 'Yes' if p(x) else 'No'
+         ? lambda x : lambda p : ('yes; ' if p(x) else 'no; ') + 'that holds of ' + names(y for y in things if p(y)).
