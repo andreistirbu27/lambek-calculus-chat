@@ -100,6 +100,16 @@ startEval ph@(hin,hout,_,_) world = do
   hSetEncoding hout utf8
   sendLine ph helperCode
   loadWorld ph world
+  -- skip whatever Python prints on startup (VS Code adds a line), otherwise all answers are off by one
+  sendLine ph ("print(" ++ pyString syncMarker ++ ")")
+  skipTo syncMarker
+  where
+    skipTo m = do
+      l <- hGetLine hout
+      if trim l == m then return () else skipTo m
+
+syncMarker :: String
+syncMarker = "--chatllambda-ready--"
 
 -- evaluate one reading, returning what Python printed
 evalLExp :: PythonHandle -> [(Var,PythonCode)] -> LExp -> IO String
